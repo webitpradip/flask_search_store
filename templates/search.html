@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Search Records{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-md-8 offset-md-2">
+    <h1 class="mt-4">Search Records</h1>
+    <form method="POST">
+      <div class="form-group">
+        <input type="text" name="query" class="form-control" placeholder="Search..." required>
+      </div>
+      <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+    {% if results %}
+    <h2 class="mt-4">Results for "{{ query }}"</h2>
+    <ul class="list-group">
+      {% for record in results %}
+      <li class="list-group-item">
+        <h5>{{ record.title }}</h5>
+        <p>
+          {% if record.description|length > 100 %}
+            <span class="description-short">{{ record.description[:100] }}...</span>
+            <span class="description-full d-none">{{ record.description }}</span>
+            <a href="#" class="show-more">Show More</a>
+          {% else %}
+            {{ record.description }}
+          {% endif %}
+        </p>
+        <a href="{{ url_for('edit', id=record.id) }}" class="btn btn-primary btn-sm">Edit</a>
+        <ul class="list-inline mt-2">
+          {% for file in record.files %}
+          <li class="list-inline-item">
+            <a href="{{ url_for('uploaded_file', filename=file.filename) }}">{{ file.filename }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.show-more').forEach(function(showMoreLink) {
+      showMoreLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        var descriptionShort = showMoreLink.previousElementSibling.previousElementSibling;
+        var descriptionFull = showMoreLink.previousElementSibling;
+        
+        if (descriptionFull.classList.contains('d-none')) {
+          descriptionFull.classList.remove('d-none');
+          descriptionShort.classList.add('d-none');
+          showMoreLink.textContent = 'Show Less';
+        } else {
+          descriptionFull.classList.add('d-none');
+          descriptionShort.classList.remove('d-none');
+          showMoreLink.textContent = 'Show More';
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

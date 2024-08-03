@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Import Data{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-md-8 offset-md-2">
+    <h1 class="mt-4">Import Data</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <div class="form-group">
+        <label for="file">Choose ZIP file to import</label>
+        <input type="file" class="form-control-file" id="file" name="file" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Import</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

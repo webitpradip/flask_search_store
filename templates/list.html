@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}List Records{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-md-10 offset-md-1">
+    <h1 class="mt-4">List Records</h1>
+    <ul class="list-group">
+      {% for record in records %}
+      <li class="list-group-item">
+        <h5>{{ record.title }}</h5>
+        <p>{{ record.description }}</p>
+        <a href="{{ url_for('edit', id=record.id) }}" class="btn btn-primary btn-sm">Edit</a>
+        <ul class="list-inline mt-2">
+          {% for file in record.files %}
+          <li class="list-inline-item">
+            <a href="{{ url_for('uploaded_file', filename=file.filename) }}">{{ file.filename }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+      </li>
+      {% endfor %}
+    </ul>
+    <nav class="mt-4">
+      <ul class="pagination justify-content-center">
+        {% if prev_url %}
+        <li class="page-item"><a class="page-link" href="{{ prev_url }}">Previous</a></li>
+        {% endif %}
+        {% if next_url %}
+        <li class="page-item"><a class="page-link" href="{{ next_url }}">Next</a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+</div>
+{% endblock %}
