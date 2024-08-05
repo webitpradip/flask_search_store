@@ -18,11 +18,11 @@
         <h5>{{ record.title }}</h5>
         <p>
           {% if record.description|length > 100 %}
-            <span class="description-short">{{ record.description[:100] }}...</span>
-            <span class="description-full d-none">{{ record.description }}</span>
+            <span class="description-short">{{ record.description.replace('\n', '<br/>').replace('\r\n', '<br/>')[:100]|safe }}...</span>
+            <span class="description-full d-none">{{ record.description.replace('\n', '<br/>').replace('\r\n', '<br/>')|safe }}</span>
             <a href="#" class="show-more">Show More</a>
           {% else %}
-            {{ record.description }}
+          {{ record.description.replace('\n', '<br/>').replace('\r\n', '<br/>')|safe }}
           {% endif %}
         </p>
         <a href="{{ url_for('edit', id=record.id) }}" class="btn btn-primary btn-sm">Edit</a>
