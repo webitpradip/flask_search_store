@@ -81,7 +81,7 @@ def delete_file(id):
 @app.route('/', methods=['GET', 'POST'])
 def search():
     page = request.args.get('page', 1, type=int)
-    per_page = 1
+    per_page = 10
     query = request.form.get('query', '')
 
     if request.method == 'POST':
