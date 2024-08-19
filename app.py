@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 from forms import CreateForm
 from models import db, Record, File
@@ -9,13 +9,10 @@ import zipfile
 from io import BytesIO
 import sqlite3
 
-
-
 app = Flask(__name__)
 app.config.from_object(Config)
 
 db.init_app(app)
-
 
 @app.route('/create', methods=['GET', 'POST'])
 def create():
@@ -72,8 +69,6 @@ def edit(id):
         return redirect(url_for('list_records'))
     return render_template('edit.html', form=form, record=record)
 
-
-
 @app.route('/delete_file/<int:id>')
 def delete_file(id):
     file = File.query.get_or_404(id)
@@ -85,10 +80,15 @@ def delete_file(id):
 
 @app.route('/', methods=['GET', 'POST'])
 def search():
-    if request.method == 'POST':
-        query = request.form['query']
-        words = query.split()
+    page = request.args.get('page', 1, type=int)
+    per_page = 1
+    query = request.form.get('query', '')
 
+    if request.method == 'POST':
+        return redirect(url_for('search', query=query))
+
+    if query:
+        words = query.split()
         filters = []
         for word in words:
             word_filter = (
@@ -98,9 +98,14 @@ def search():
             )
             filters.append(word_filter)
 
-        results = Record.query.filter(db.or_(*filters)).all()
-        return render_template('search.html', results=results, query=query)
-    return render_template('search.html', results=[])
+        results = Record.query.filter(db.or_(*filters)).paginate(page, per_page, False)
+    else:
+        results = Record.query.paginate(page, per_page, False)
+
+    next_url = url_for('search', query=query, page=results.next_num) if results.has_next else None
+    prev_url = url_for('search', query=query, page=results.prev_num) if results.has_prev else None
+
+    return render_template('search.html', results=results.items, query=query, next_url=next_url, prev_url=prev_url)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):

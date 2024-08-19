@@ -36,6 +36,16 @@
       </li>
       {% endfor %}
     </ul>
+    <nav aria-label="Search result pages" class="mt-4">
+      <ul class="pagination">
+        {% if prev_url %}
+        <li class="page-item"><a class="page-link" href="{{ prev_url }}">Previous</a></li>
+        {% endif %}
+        {% if next_url %}
+        <li class="page-item"><a class="page-link" href="{{ next_url }}">Next</a></li>
+        {% endif %}
+      </ul>
+    </nav>
     {% endif %}
   </div>
 </div>
