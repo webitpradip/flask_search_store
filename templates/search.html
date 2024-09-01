@@ -1,22 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Search Records{% endblock %}
+{% block title %}Advanced Search{% endblock %}
 {% block content %}
-<div class="row">
-  <div class="col-md-8 offset-md-2">
-    <h1 class="mt-4">Search Records</h1>
-    <form method="POST">
-      <div class="form-group">
-        <input type="text" name="query" class="form-control" placeholder="Search..." required>
+<div class="container">
+  <h1 class="mt-4 mb-4">Advanced Search</h1>
+  <form method="POST" id="search-form">
+    <div class="row">
+      <div class="col-md-6">
+        <div class="form-group">
+          <label for="query">Keywords</label>
+          <input type="text" name="query" id="query" class="form-control" placeholder="Enter keywords..." value="{{ query }}">
+        </div>
       </div>
-      <button type="submit" class="btn btn-primary">Search</button>
-    </form>
-    {% if results %}
-    <h2 class="mt-4">Results for "{{ query }}"</h2>
-    <ul class="list-group">
-      {% for record in results %}
-      <li class="list-group-item">
-        <h5>{{ record.Record.title }} <small class="text-muted">(Relevance: {{ record.weight }})</small></h5>
-        <p>
+      <div class="col-md-6">
+        <div class="form-group">
+          <label for="group_name">Group Name</label>
+          <input type="text" name="group_name" id="group_name" class="form-control" placeholder="Enter group name..." value="{{ group_name }}">
+        </div>
+      </div>
+    </div>
+    <div class="row mt-3">
+      <div class="col-md-6">
+        <div class="form-group">
+          <label for="date_from">Date From</label>
+          <input type="date" name="date_from" id="date_from" class="form-control" value="{{ date_from }}">
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="form-group">
+          <label for="date_to">Date To</label>
+          <input type="date" name="date_to" id="date_to" class="form-control" value="{{ date_to }}">
+        </div>
+      </div>
+    </div>
+    <div class="row mt-3">
+      <div class="col-md-12">
+        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="button" id="clear-form" class="btn btn-secondary ml-2">Clear</button>
+      </div>
+    </div>
+  </form>
+
+  {% if results %}
+  <h2 class="mt-4">Search Results</h2>
+  <div id="search-results">
+    {% for record in results %}
+    <div class="card mt-3">
+      <div class="card-body">
+        <h5 class="card-title">{{ record.Record.title }} <small class="text-muted">(Relevance: {{ record.weight }})</small></h5>
+        <h6 class="card-subtitle mb-2 text-muted">Group: {{ record.Record.group_name }}</h6>
+        <p class="card-text">
           {% if record.Record.description|length > 100 %}
             <span class="description-short">{{ record.Record.description[:100] }}...</span>
             <span class="description-full d-none">{{ record.Record.description }}</span>
@@ -25,34 +57,39 @@
             {{ record.Record.description }}
           {% endif %}
         </p>
-        <p><strong>Group:</strong> {{ record.Record.group_name }}</p>
         <a href="{{ url_for('edit', id=record.Record.id) }}" class="btn btn-primary btn-sm">Edit</a>
-        <ul class="list-inline mt-2">
+        {% if record.Record.files %}
+        <h6 class="mt-2">Attached Files:</h6>
+        <ul class="list-group list-group-flush">
           {% for file in record.Record.files %}
-          <li class="list-inline-item">
+          <li class="list-group-item">
             <a href="{{ url_for('uploaded_file', filename=file.filename) }}">{{ file.filename }}</a>
           </li>
           {% endfor %}
         </ul>
-      </li>
-      {% endfor %}
-    </ul>
-    <nav aria-label="Search result pages" class="mt-4">
-      <ul class="pagination">
-        {% if prev_url %}
-        <li class="page-item"><a class="page-link" href="{{ prev_url }}">Previous</a></li>
         {% endif %}
-        {% if next_url %}
-        <li class="page-item"><a class="page-link" href="{{ next_url }}">Next</a></li>
-        {% endif %}
-      </ul>
-    </nav>
-    {% endif %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
+  <nav aria-label="Search result pages" class="mt-4">
+    <ul class="pagination justify-content-center">
+      {% if prev_url %}
+      <li class="page-item"><a class="page-link" href="{{ prev_url }}">Previous</a></li>
+      {% endif %}
+      {% if next_url %}
+      <li class="page-item"><a class="page-link" href="{{ next_url }}">Next</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% elif request.args %}
+  <p class="mt-4">No results found for your search criteria.</p>
+  {% endif %}
 </div>
 
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    // Show More / Show Less functionality
     document.querySelectorAll('.show-more').forEach(function(showMoreLink) {
       showMoreLink.addEventListener('click', function(e) {
         e.preventDefault();
@@ -69,6 +106,23 @@
           showMoreLink.textContent = 'Show More';
         }
       });
+    });
+
+    // Clear form functionality
+    document.getElementById('clear-form').addEventListener('click', function() {
+      document.getElementById('search-form').reset();
+    });
+
+    // Date range validation
+    var dateFrom = document.getElementById('date_from');
+    var dateTo = document.getElementById('date_to');
+
+    dateFrom.addEventListener('change', function() {
+      dateTo.min = dateFrom.value;
+    });
+
+    dateTo.addEventListener('change', function() {
+      dateFrom.max = dateTo.value;
     });
   });
 </script>

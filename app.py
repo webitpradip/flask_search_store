@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory, abort
 from werkzeug.utils import secure_filename
 from forms import CreateForm
 from models import db, Record, File
@@ -8,7 +8,7 @@ from datetime import datetime
 import zipfile
 from io import BytesIO
 import sqlite3
-from sqlalchemy import case, func
+from sqlalchemy import case, func, and_, desc
 
 
 app = Flask(__name__)
@@ -16,8 +16,29 @@ app.config.from_object(Config)
 
 db.init_app(app)
 
+@app.errorhandler(404)
+def not_found_error(error):
+    """
+    Handle 404 Not Found errors.
+    """
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """
+    Handle 500 Internal Server Error.
+    """
+    db.session.rollback()
+    return render_template('500.html'), 500
+
 @app.route('/create', methods=['GET', 'POST'])
 def create():
+    """
+    Handle the creation of a new record.
+    
+    GET: Render the create form.
+    POST: Process the submitted form, create a new record, and handle file uploads.
+    """
     form = CreateForm()
     if form.validate_on_submit():
         record = Record(title=form.title.data, description=form.description.data, group_name=form.group_name.data)
@@ -40,6 +61,9 @@ def create():
 
 @app.route('/list')
 def list_records():
+    """
+    List all records with pagination.
+    """
     page = request.args.get('page', 1, type=int)
     records = Record.query.paginate(page, 10, False)
     next_url = url_for('list_records', page=records.next_num) if records.has_next else None
@@ -48,15 +72,19 @@ def list_records():
 
 @app.route('/edit/<int:id>', methods=['GET', 'POST'])
 def edit(id):
+    """
+    Handle the editing of an existing record.
+    
+    GET: Render the edit form with existing record data.
+    POST: Process the submitted form and update the record.
+    """
     record = Record.query.get_or_404(id)
     form = CreateForm(obj=record)
     if form.validate_on_submit():
-        # Populate other fields
         record.title = form.title.data
         record.description = form.description.data
         record.group_name = form.group_name.data
 
-        # Handle file uploads if any
         files = request.files.getlist('files')
         for file in files:
             if file:
@@ -73,55 +101,96 @@ def edit(id):
 
 @app.route('/delete_file/<int:id>')
 def delete_file(id):
+    """
+    Delete a file associated with a record.
+    """
     file = File.query.get_or_404(id)
-    os.remove(os.path.join(app.config['UPLOAD_FOLDER'], file.filename))
-    db.session.delete(file)
-    db.session.commit()
-    flash('File deleted successfully!', 'success')
+    try:
+        os.remove(os.path.join(app.config['UPLOAD_FOLDER'], file.filename))
+        db.session.delete(file)
+        db.session.commit()
+        flash('File deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting file: {str(e)}', 'danger')
     return redirect(url_for('edit', id=file.record_id))
 
 @app.route('/', methods=['GET', 'POST'])
 def search():
+    """
+    Handle the advanced search functionality.
+    
+    GET: Render the search form and display results if query parameters are provided.
+    POST: Process the search query and redirect to GET with query parameters.
+    """
     page = request.args.get('page', 1, type=int)
     per_page = 10
-    query = request.form.get('query', '')
 
     if request.method == 'POST':
-        return redirect(url_for('search', query=query))
+        return redirect(url_for('search', **request.form))
+
+    query = request.args.get('query', '').strip()
+    group_name = request.args.get('group_name', '').strip()
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    filters = []
 
     if query:
         words = query.split()
+        if len(words) > 10:
+            flash('Please limit your search to 10 words or less.', 'warning')
+            words = words[:10]
+            query = ' '.join(words)
         
-        # Create a case statement for each word and field combination
-        title_cases = [case([(Record.title.ilike(f'%{word}%'), 3)], else_=0) for word in words]
-        description_cases = [case([(Record.description.ilike(f'%{word}%'), 2)], else_=0) for word in words]
-        group_name_cases = [case([(Record.group_name.ilike(f'%{word}%'), 1)], else_=0) for word in words]
+        filters.append(db.or_(
+            Record.title.ilike(f'%{word}%') for word in words
+        ) | db.or_(
+            Record.description.ilike(f'%{word}%') for word in words
+        ))
 
-        # Sum up all the case statements to get the total weight
+    if group_name:
+        filters.append(Record.group_name.ilike(f'%{group_name}%'))
+
+    if date_from:
+        filters.append(Record.created_at >= datetime.strptime(date_from, '%Y-%m-%d'))
+
+    if date_to:
+        filters.append(Record.created_at <= datetime.strptime(date_to, '%Y-%m-%d'))
+
+    if filters:
+        # Create weight cases for relevance ranking
+        title_cases = [case([(Record.title.ilike(f'%{word}%'), 3)], else_=0) for word in words] if query else []
+        description_cases = [case([(Record.description.ilike(f'%{word}%'), 2)], else_=0) for word in words] if query else []
+        group_name_cases = [case([(Record.group_name.ilike(f'%{group_name}%'), 1)], else_=0)] if group_name else []
+
         total_weight = sum(title_cases + description_cases + group_name_cases)
 
-        # Create the main query with all-word search
-        results = Record.query.filter(
-            db.and_(
-                db.or_(Record.title.ilike(f'%{word}%') for word in words) |
-                db.or_(Record.description.ilike(f'%{word}%') for word in words) |
-                db.or_(Record.group_name.ilike(f'%{word}%') for word in words)
-            )
-        ).add_columns(total_weight.label('weight')).order_by(total_weight.desc()).paginate(page, per_page, False)
+        results = Record.query.filter(and_(*filters)).add_columns(total_weight.label('weight')).order_by(desc(total_weight)).paginate(page, per_page, False)
     else:
-        results = Record.query.paginate(page, per_page, False)
+        results = Record.query.add_columns(func.cast(0, db.Integer).label('weight')).paginate(page, per_page, False)
 
-    next_url = url_for('search', query=query, page=results.next_num) if results.has_next else None
-    prev_url = url_for('search', query=query, page=results.prev_num) if results.has_prev else None
+    next_url = url_for('search', page=results.next_num, **request.args) if results.has_next else None
+    prev_url = url_for('search', page=results.prev_num, **request.args) if results.has_prev else None
 
-    return render_template('search.html', results=results.items, query=query, next_url=next_url, prev_url=prev_url)
+    return render_template('search.html', results=results.items, query=query, group_name=group_name, 
+                           date_from=date_from, date_to=date_to, next_url=next_url, prev_url=prev_url)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
+    """
+    Serve uploaded files.
+    """
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 @app.route('/export', methods=['GET', 'POST'])
 def export():
+    """
+    Handle the export functionality.
+    
+    GET: Render the export form.
+    POST: Process the export request and generate a zip file with the exported data.
+    """
     if request.method == 'POST':
         export_type = request.form.get('export_type')
         
@@ -137,6 +206,9 @@ def export():
     return render_template('export.html')
 
 def export_database(zf):
+    """
+    Export the database to a SQL file and add it to the zip file.
+    """
     db_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'database_export.sql')
     conn = db.engine.raw_connection()
     try:
@@ -149,6 +221,9 @@ def export_database(zf):
         os.remove(db_file_path)
 
 def export_files(zf):
+    """
+    Export all files in the upload folder to the zip file.
+    """
     for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
         for file in files:
             file_path = os.path.join(root, file)
@@ -156,6 +231,12 @@ def export_files(zf):
 
 @app.route('/import', methods=['GET', 'POST'])
 def import_data():
+    """
+    Handle the import functionality.
+    
+    GET: Render the import form.
+    POST: Process the uploaded zip file and import the data.
+    """
     if request.method == 'POST':
         if 'file' not in request.files:
             flash('No file part', 'danger')
@@ -164,18 +245,26 @@ def import_data():
         if file.filename == '':
             flash('No selected file', 'danger')
             return redirect(request.url)
-        if file:
-            with zipfile.ZipFile(file, 'r') as zf:
-                if 'database_export.sql' in zf.namelist():
-                    import_database(zf)
-                for file_info in zf.infolist():
-                    if file_info.filename != 'database_export.sql':
-                        import_file(zf, file_info)
-            flash('Data imported successfully!', 'success')
-            return redirect(url_for('list_records'))
+        if file and file.filename.endswith('.zip'):
+            try:
+                with zipfile.ZipFile(file, 'r') as zf:
+                    if 'database_export.sql' in zf.namelist():
+                        import_database(zf)
+                    for file_info in zf.infolist():
+                        if file_info.filename != 'database_export.sql':
+                            import_file(zf, file_info)
+                flash('Data imported successfully!', 'success')
+                return redirect(url_for('list_records'))
+            except Exception as e:
+                flash(f'Error importing data: {str(e)}', 'danger')
+        else:
+            flash('Invalid file format. Please upload a zip file.', 'danger')
     return render_template('import.html')
 
 def import_database(zf):
+    """
+    Import the database from the SQL file in the zip file.
+    """
     db_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'database_import.sql')
     with open(db_file_path, 'wb') as f:
         f.write(zf.read('database_export.sql'))
@@ -206,13 +295,19 @@ def import_database(zf):
     os.remove(db_file_path)
 
 def import_file(zf, file_info):
+    """
+    Import a single file from the zip file to the upload folder.
+    """
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_info.filename)
     if not os.path.exists(file_path):
         zf.extract(file_info.filename, app.config['UPLOAD_FOLDER'])
 
 @app.context_processor
 def inject_now():
+    """
+    Inject the current year into all templates.
+    """
     return {'current_year': datetime.utcnow().year}
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=app.config['DEBUG'])
