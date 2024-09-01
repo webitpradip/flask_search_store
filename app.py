@@ -170,8 +170,12 @@ def search():
     else:
         results = Record.query.add_columns(func.cast(0, db.Integer).label('weight')).paginate(page, per_page, False)
 
-    next_url = url_for('search', page=results.next_num, **request.args) if results.has_next else None
-    prev_url = url_for('search', page=results.prev_num, **request.args) if results.has_prev else None
+    # Remove 'page' from request.args to avoid duplicate 'page' parameter
+    args = request.args.copy()
+    args.pop('page', None)
+    
+    next_url = url_for('search', page=results.next_num, **args) if results.has_next else None
+    prev_url = url_for('search', page=results.prev_num, **args) if results.has_prev else None
 
     return render_template('search.html', results=results.items, query=query, group_name=group_name, 
                            date_from=date_from, date_to=date_to, next_url=next_url, prev_url=prev_url)
