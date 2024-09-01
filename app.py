@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 from forms import CreateForm
 from models import db, Record, File
@@ -11,13 +11,10 @@ import sqlite3
 from sqlalchemy import case, func
 
 
-
-
 app = Flask(__name__)
 app.config.from_object(Config)
 
 db.init_app(app)
-
 
 @app.route('/create', methods=['GET', 'POST'])
 def create():
@@ -74,8 +71,6 @@ def edit(id):
         return redirect(url_for('list_records'))
     return render_template('edit.html', form=form, record=record)
 
-
-
 @app.route('/delete_file/<int:id>')
 def delete_file(id):
     file = File.query.get_or_404(id)
@@ -87,10 +82,16 @@ def delete_file(id):
 
 @app.route('/', methods=['GET', 'POST'])
 def search():
-    if request.method == 'POST':
-        query = request.form['query']
-        words = query.split()
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    query = request.form.get('query', '')
 
+    if request.method == 'POST':
+        return redirect(url_for('search', query=query))
+
+    if query:
+        words = query.split()
+        
         # Create a case statement for each word and field combination
         title_cases = [case([(Record.title.ilike(f'%{word}%'), 3)], else_=0) for word in words]
         description_cases = [case([(Record.description.ilike(f'%{word}%'), 2)], else_=0) for word in words]
@@ -99,17 +100,21 @@ def search():
         # Sum up all the case statements to get the total weight
         total_weight = sum(title_cases + description_cases + group_name_cases)
 
-        # Create the main query
+        # Create the main query with all-word search
         results = Record.query.filter(
             db.and_(
                 db.or_(Record.title.ilike(f'%{word}%') for word in words) |
                 db.or_(Record.description.ilike(f'%{word}%') for word in words) |
                 db.or_(Record.group_name.ilike(f'%{word}%') for word in words)
             )
-        ).add_columns(total_weight.label('weight')).order_by(total_weight.desc()).all()
+        ).add_columns(total_weight.label('weight')).order_by(total_weight.desc()).paginate(page, per_page, False)
+    else:
+        results = Record.query.paginate(page, per_page, False)
 
-        return render_template('search.html', results=results, query=query)
-    return render_template('search.html', results=[])
+    next_url = url_for('search', query=query, page=results.next_num) if results.has_next else None
+    prev_url = url_for('search', query=query, page=results.prev_num) if results.has_prev else None
+
+    return render_template('search.html', results=results.items, query=query, next_url=next_url, prev_url=prev_url)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
