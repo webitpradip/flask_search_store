@@ -8,6 +8,8 @@ from datetime import datetime
 import zipfile
 from io import BytesIO
 import sqlite3
+from sqlalchemy import case, func
+
 
 
 
@@ -89,16 +91,23 @@ def search():
         query = request.form['query']
         words = query.split()
 
-        filters = []
-        for word in words:
-            word_filter = (
-                Record.title.contains(word) |
-                Record.description.contains(word) |
-                Record.group_name.contains(word)
-            )
-            filters.append(word_filter)
+        # Create a case statement for each word and field combination
+        title_cases = [case([(Record.title.ilike(f'%{word}%'), 3)], else_=0) for word in words]
+        description_cases = [case([(Record.description.ilike(f'%{word}%'), 2)], else_=0) for word in words]
+        group_name_cases = [case([(Record.group_name.ilike(f'%{word}%'), 1)], else_=0) for word in words]
 
-        results = Record.query.filter(db.or_(*filters)).all()
+        # Sum up all the case statements to get the total weight
+        total_weight = sum(title_cases + description_cases + group_name_cases)
+
+        # Create the main query
+        results = Record.query.filter(
+            db.and_(
+                db.or_(Record.title.ilike(f'%{word}%') for word in words) |
+                db.or_(Record.description.ilike(f'%{word}%') for word in words) |
+                db.or_(Record.group_name.ilike(f'%{word}%') for word in words)
+            )
+        ).add_columns(total_weight.label('weight')).order_by(total_weight.desc()).all()
+
         return render_template('search.html', results=results, query=query)
     return render_template('search.html', results=[])
 

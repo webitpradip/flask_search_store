@@ -15,19 +15,20 @@
     <ul class="list-group">
       {% for record in results %}
       <li class="list-group-item">
-        <h5>{{ record.title }}</h5>
+        <h5>{{ record.Record.title }} <small class="text-muted">(Relevance: {{ record.weight }})</small></h5>
         <p>
-          {% if record.description|length > 100 %}
-            <span class="description-short">{{ record.description[:100] }}...</span>
-            <span class="description-full d-none">{{ record.description }}</span>
+          {% if record.Record.description|length > 100 %}
+            <span class="description-short">{{ record.Record.description[:100] }}...</span>
+            <span class="description-full d-none">{{ record.Record.description }}</span>
             <a href="#" class="show-more">Show More</a>
           {% else %}
-            {{ record.description }}
+            {{ record.Record.description }}
           {% endif %}
         </p>
-        <a href="{{ url_for('edit', id=record.id) }}" class="btn btn-primary btn-sm">Edit</a>
+        <p><strong>Group:</strong> {{ record.Record.group_name }}</p>
+        <a href="{{ url_for('edit', id=record.Record.id) }}" class="btn btn-primary btn-sm">Edit</a>
         <ul class="list-inline mt-2">
-          {% for file in record.files %}
+          {% for file in record.Record.files %}
           <li class="list-inline-item">
             <a href="{{ url_for('uploaded_file', filename=file.filename) }}">{{ file.filename }}</a>
           </li>
