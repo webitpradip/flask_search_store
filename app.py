@@ -216,7 +216,7 @@ def export_database(zf):
     db_file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'database_export.sql')
     conn = db.engine.raw_connection()
     try:
-        with open(db_file_path, 'w') as f:
+        with open(db_file_path, 'w', encoding='utf-8') as f:
             for line in conn.iterdump():
                 f.write('%s\n' % line)
         zf.write(db_file_path, 'database_export.sql')
@@ -227,11 +227,14 @@ def export_database(zf):
 def export_files(zf):
     """
     Export all files in the upload folder to the zip file.
+    Excludes .gitignore and .gitkeep files.
     """
+    excluded_files = {'.gitignore', '.gitkeep'}
     for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
         for file in files:
-            file_path = os.path.join(root, file)
-            zf.write(file_path, os.path.relpath(file_path, app.config['UPLOAD_FOLDER']))
+            if file not in excluded_files:
+                file_path = os.path.join(root, file)
+                zf.write(file_path, os.path.relpath(file_path, app.config['UPLOAD_FOLDER']))
 
 @app.route('/import', methods=['GET', 'POST'])
 def import_data():
@@ -273,7 +276,7 @@ def import_database(zf):
     with open(db_file_path, 'wb') as f:
         f.write(zf.read('database_export.sql'))
     
-    with open(db_file_path, 'r') as f:
+    with open(db_file_path, 'r', encoding='utf-8') as f:
         conn = db.engine.raw_connection()
         cursor = conn.cursor()
         buffer = ""
